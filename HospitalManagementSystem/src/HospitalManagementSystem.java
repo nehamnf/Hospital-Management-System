@@ -1,119 +1,106 @@
-import com.mysql.cj.jdbc.MysqlDataSource;
-
-import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.Scanner;
 
 public class HospitalManagementSystem {
-    private static final String url="jdbc:mysql://127.0.0.1:3306/";
-    private static final String userName="";
-    private static final String password="";
-
     public static void main(String[] args) {
+        try(Scanner sc= new Scanner(System.in)) {
+            DatabaseConnectionManager connectionManager= new DatabaseConnectionManager();
+            try(Connection connection=connectionManager.getConnection()){
 
-        MysqlDataSource dataSource = new MysqlDataSource();
-        dataSource.setURL(url);
-        dataSource.setUser(userName);
-        dataSource.setPassword(password);
+                PatientService patientService= new PatientService(connection);
+                DoctorService doctorService= new DoctorService(connection);
+                AppointmentService appointmentService= new AppointmentService(connection);
 
-        try{
-            Connection connection= dataSource.getConnection();
-            Scanner sc = new Scanner(System.in);
-            Patient p= new Patient(connection,sc);
-            Doctor d= new Doctor(connection);
-
-            while (true){
-                System.out.println(" HOSPITAL MANAGEMENT SYSTEM ");
-                System.out.println("1. Add Patient ");
-                System.out.println("2. View Patient ");
-                System.out.println("3. View Doctors ");
-                System.out.println("4. Book Appointment ");
-                System.out.println("5. Exit ");
-                System.out.println("Enter your choice: ");
-                int choice= sc.nextInt();
-                sc.nextLine();
-                switch (choice){
-                    case 1:
-                        p.addPatient();
-                        System.out.println();
-                        break;
-                    case 2:
-                        p.viewPatients();
-                        System.out.println();
-                        break;
-                    case 3:
-                        d.viewDoctors();
-                        System.out.println();
-                        break;
-                    case 4:
-                        bookAppointment(connection,sc,p,d);
-                        System.out.println();
-                        break;
-                    case 5:
-                        return;
-                    default:
-                        System.out.println("Enter correct choice: ");
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
-
-    public static void bookAppointment(Connection connection,Scanner sc,Patient p, Doctor d){
-        System.out.println("Enter Patient Id: ");
-        int pid= sc.nextInt();
-        System.out.println("Enter Doctors Id: ");
-        int did=sc.nextInt();
-        System.out.println("Enter Appointment Date (YYYY-MM-DD): ");
-        String appDate= sc.next();
-        if(p.getPatientById(pid) && d.getDoctorById(did)){
-            if(checkDoctorsAvailibility(did,appDate,connection)){
-                try {
-                    String insertQuery = "INSERT INTO appointments(patient_id,doctor_id,appointment_date) value(?,?,?)";
-                    PreparedStatement prpStmnt = connection.prepareStatement(insertQuery);
-                    prpStmnt.setInt(1,pid);
-                    prpStmnt.setInt(2,did);
-                    prpStmnt.setString(3, appDate);
-                    int rowInserted= prpStmnt.executeUpdate();
-                    if(rowInserted > 0){
-                        System.out.println("Appointment is Successful");
-                    }else {
-                        System.out.println("Failed to book an appointment");
+                while (true){
+                    display();
+                    int choice = sc.nextInt();
+                    sc.nextLine();
+                    switch (choice){
+                        case 1:{
+                            System.out.println("Enter Patient Name: ");
+                            String patientName=sc.nextLine();
+                            System.out.println("Enter Patient Age: ");
+                            int patientAge=sc.nextInt();
+                            System.out.println("Enter Patient Gender: ");
+                            String patientGender=sc.next();
+                            patientService.addPatient(new Patient(0,patientName,patientAge,patientGender));
+                            break;
+                        }
+                        case 2:{
+                            System.out.println("Enter patient Id to View: ");
+                            int patientId=sc.nextInt();
+                            Patient patient=patientService.viewPatientById(patientId);
+                            if(patient != null){
+                                System.out.println("Patient Information: "+patient);
+                            }else {
+                                System.out.println("Patient Not Found");
+                            }
+                            break;
+                        }
+                        case 3:{
+                            patientService.viewAllPatients().forEach((patient)-> System.out.println(patient));
+                            break;
+                        }
+                        case 4:{
+                            System.out.println("Enter Doctor Name: ");
+                            String doctorName=sc.nextLine();
+                            System.out.println("Enter Doctor Specialization: ");
+                            String doctorSpecialization=sc.nextLine();
+                            doctorService.addDoctor(new Doctor(0,doctorName,doctorSpecialization));
+                            break;
+                        }
+                        case 5:{
+                            System.out.println("Enter Doctor Id to View: ");
+                            int doctorId=sc.nextInt();
+                            Doctor doctor=doctorService.viewDoctorById(doctorId);
+                            if(doctor != null){
+                                System.out.println("Doctor Information: "+doctor);
+                            }else {
+                                System.out.println("Doctor Not Found");
+                            }
+                            break;
+                        }
+                        case 6:{
+                            doctorService.viewAllDoctors().forEach((doctor)-> System.out.println(doctor));
+                            break;
+                        }
+                        case 7:{
+                            System.out.println("To Book an Appointment enter below details");
+                            System.out.println("Enter Patient Id: ");
+                            int patientId= sc.nextInt();
+                            System.out.println("Enter Doctor Id: ");
+                            int doctorId= sc.nextInt();
+                            System.out.println("Enter Date in (YYYY-MM-DD): ");
+                            String date=sc.next();
+                            LocalDate localDate=LocalDate.parse(date);
+                            appointmentService.bookAppointment(new Appointment(0,patientId,doctorId,localDate));
+                            break;
+                        }
+                        case 8:{
+                            System.out.println("Exiting from the System");
+                            return;
+                        }
+                        default:
+                            System.out.println("Enter correct choice: ");
                     }
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
                 }
-            }else{
-                System.out.println("Doctor appointment is not available");
+            }catch (SQLException e){
+                System.out.println("Error establishing connection to database: "+e.getMessage());
             }
-        }else{
-            System.out.println("Doctor Id or patient Id is not correct");
         }
     }
 
-    public static boolean checkDoctorsAvailibility(int id, String date,Connection connection){
-        try {
-            String query = "SELECT count(*) from appointments where doctor_id=? and appointment_date=?";
-            PreparedStatement prpStmnt= connection.prepareStatement(query);
-            prpStmnt.setInt(1,id);
-            prpStmnt.setString(2,date);
-            ResultSet resultSet= prpStmnt.executeQuery();
-            if(resultSet.next()){
-                int count = resultSet.getInt(1);
-                if(count==0){
-                    return true;
-                }else {
-                    return false;
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return false;
+    public static void display(){
+        System.out.println("HOSPITAL MANAGEMENT SYSTEM");
+        System.out.println("1. Add Patients");
+        System.out.println("2. View Patient");
+        System.out.println("3. View All Patient");
+        System.out.println("4. Add Doctor");
+        System.out.println("5. View Doctor");
+        System.out.println("6. View All Doctor");
+        System.out.println("7. Book An Appointment");
+        System.out.println("8. Exit");
     }
 }
